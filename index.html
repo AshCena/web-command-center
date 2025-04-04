@@ -1,26 +1,143 @@
+
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>web-command-center</title>
-    <meta name="description" content="Lovable Generated Project" />
-    <meta name="author" content="Lovable" />
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Command Center</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1 class="title">
+        <span class="title-accent">Web</span>
+        <span class="title-prompt">Command</span>
+        <span class="title-text">Center</span>
+        <div class="status-indicators">
+          <span id="storage-status" class="status-pill">Storage Disconnected</span>
+          <span id="terminal-status" class="status-pill">Terminal Disconnected</span>
+        </div>
+      </h1>
+    </header>
 
-    <meta property="og:title" content="web-command-center" />
-    <meta property="og:description" content="Lovable Generated Project" />
-    <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <div class="tabs">
+      <button class="tab-button active" data-tab="terminal">Terminal</button>
+      <button class="tab-button" data-tab="files">File Share</button>
+      <button class="tab-button" data-tab="settings">Settings</button>
+      <button class="tab-button disabled" data-tab="logs">Logs</button>
+    </div>
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@lovable_dev" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
-  </head>
+    <div class="tab-content">
+      <!-- Terminal Tab -->
+      <div id="terminal" class="tab-pane active">
+        <div class="terminal-container">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <div class="dot red"></div>
+              <div class="dot yellow"></div>
+              <div class="dot green"></div>
+            </div>
+            <div class="terminal-title">Terminal</div>
+            <div class="terminal-controls">
+              <label class="toggle">
+                <input type="checkbox" id="local-mode-toggle">
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">Local Mode</span>
+              </label>
+              <button id="clear-terminal" class="control-button">Clear</button>
+            </div>
+          </div>
+          <div id="terminal-output" class="terminal-output"></div>
+          <div class="terminal-input-container">
+            <span class="prompt">$</span>
+            <input type="text" id="terminal-input" class="terminal-input" autofocus placeholder="Type a command...">
+          </div>
+        </div>
+      </div>
 
-  <body>
-    <div id="root"></div>
-    <!-- IMPORTANT: DO NOT REMOVE THIS SCRIPT TAG OR THIS VERY COMMENT! -->
-    <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+      <!-- Files Tab -->
+      <div id="files" class="tab-pane">
+        <div class="file-explorer">
+          <div class="file-header">
+            <h2>File Share</h2>
+            <div class="file-actions">
+              <button id="upload-file" class="action-button">Upload File</button>
+              <input type="file" id="file-input" style="display: none;">
+            </div>
+          </div>
+          <div class="file-list-container">
+            <ul id="file-list" class="file-list">
+              <li class="file-empty-state">No files uploaded yet.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="settings" class="tab-pane">
+        <div class="settings-container">
+          <div class="settings-tabs">
+            <button class="settings-tab-button active" data-settings-tab="supabase">Supabase Settings</button>
+            <button class="settings-tab-button" data-settings-tab="terminal">Terminal Server</button>
+          </div>
+          
+          <div id="supabase-settings" class="settings-pane active">
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3>Backend Configuration</h3>
+                <p>Connect to Supabase to enable file storage and command history</p>
+              </div>
+              <div class="settings-card-content">
+                <div class="settings-field">
+                  <label for="project-url">Supabase Project URL</label>
+                  <input type="text" id="project-url" placeholder="https://your-project.supabase.co">
+                </div>
+                <div class="settings-field">
+                  <label for="api-key">Supabase API Key</label>
+                  <input type="password" id="api-key" placeholder="Your Supabase API Key">
+                  <p class="field-note">This is your anon/public key from Supabase. Never share your service role key.</p>
+                </div>
+              </div>
+              <div class="settings-card-footer">
+                <button id="save-supabase-settings" class="primary-button">Save Settings</button>
+              </div>
+            </div>
+          </div>
+          
+          <div id="terminal-settings" class="settings-pane">
+            <div class="settings-card">
+              <div class="settings-card-header">
+                <h3>Terminal Server Configuration</h3>
+                <p>Connect to a terminal server to run commands remotely</p>
+              </div>
+              <div class="settings-card-content">
+                <div class="settings-field">
+                  <label for="websocket-url">WebSocket URL</label>
+                  <input type="text" id="websocket-url" placeholder="ws://localhost:8000/ws" value="ws://localhost:8000/ws">
+                </div>
+              </div>
+              <div class="settings-card-footer">
+                <button id="save-terminal-settings" class="primary-button">Save Settings</button>
+                <button id="test-connection" class="secondary-button">Test Connection</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Tab -->
+      <div id="logs" class="tab-pane">
+        <div class="logs-container">
+          <h3>Logs (Coming Soon)</h3>
+          <p>This feature is under development.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+  
+  <script src="js/app.js"></script>
+</body>
 </html>
