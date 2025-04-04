@@ -3,9 +3,27 @@ import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Terminal from './Terminal';
 import FileExplorer from './FileExplorer';
+import Settings from './Settings';
+import { createSupabaseClient } from '@/lib/supabase';
 
 const CommandCenter = () => {
   const [activeTab, setActiveTab] = useState("terminal");
+  const [backendConnected, setBackendConnected] = useState(false);
+
+  // Check if backend is configured
+  React.useEffect(() => {
+    const supabase = createSupabaseClient();
+    setBackendConnected(!!supabase);
+    
+    // Setup listener for storage changes (in case settings are updated)
+    const handleStorageChange = () => {
+      const supabase = createSupabaseClient();
+      setBackendConnected(!!supabase);
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
@@ -13,13 +31,18 @@ const CommandCenter = () => {
         <span className="text-terminal-accent">Web</span>
         <span className="text-terminal-prompt ml-2">Command</span>
         <span className="text-terminal-text ml-2">Center</span>
+        {backendConnected && 
+          <span className="text-xs ml-4 bg-green-700 text-white py-1 px-2 rounded-full">
+            Backend Connected
+          </span>
+        }
       </h1>
       
       <Tabs defaultValue="terminal" value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-2 md:grid-cols-4 mb-6">
           <TabsTrigger value="terminal" className="font-mono">Terminal</TabsTrigger>
           <TabsTrigger value="files" className="font-mono">File Share</TabsTrigger>
-          <TabsTrigger value="settings" className="font-mono" disabled>Settings</TabsTrigger>
+          <TabsTrigger value="settings" className="font-mono">Settings</TabsTrigger>
           <TabsTrigger value="logs" className="font-mono" disabled>Logs</TabsTrigger>
         </TabsList>
         
@@ -32,10 +55,7 @@ const CommandCenter = () => {
         </TabsContent>
         
         <TabsContent value="settings" className="mt-0">
-          <div className="terminal-container p-6 text-center">
-            <h3 className="text-xl font-mono">Settings (Coming Soon)</h3>
-            <p className="text-gray-400 mt-4">This feature is under development.</p>
-          </div>
+          <Settings />
         </TabsContent>
         
         <TabsContent value="logs" className="mt-0">

@@ -1,6 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { saveCommand, fetchCommandHistory, createSupabaseClient } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 interface TerminalEntry {
   input: string;
@@ -11,10 +13,13 @@ const Terminal = () => {
   const [history, setHistory] = useState<TerminalEntry[]>([]);
   const [currentInput, setCurrentInput] = useState('');
   const [currentDir, setCurrentDir] = useState('/home/user');
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Mock file system
+  // Mock file system (this would be replaced with Supabase data in a full implementation)
   const fileSystem = {
     '/home/user': {
       type: 'dir',
@@ -28,6 +33,51 @@ const Terminal = () => {
         }},
         'hello.txt': { type: 'file', content: 'Hello, World!' }
       }
+    }
+  };
+
+  // Check if backend is connected
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    setIsBackendConnected(!!supabase);
+    
+    // If connected, load command history
+    if (supabase) {
+      loadCommandHistory();
+    }
+    
+    // Listen for storage changes
+    const handleStorageChange = () => {
+      const supabase = createSupabaseClient();
+      setIsBackendConnected(!!supabase);
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Load command history from Supabase
+  const loadCommandHistory = async () => {
+    try {
+      const { data, error } = await fetchCommandHistory(20);
+      
+      if (error) {
+        console.error('Error loading command history:', error);
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        // Convert to the format expected by our terminal
+        const formattedHistory = data.map(item => ({
+          input: item.command,
+          output: item.output
+        }));
+        
+        setHistory(formattedHistory);
+        setCommandHistory(data.map(item => item.command));
+      }
+    } catch (error) {
+      console.error('Error loading command history:', error);
     }
   };
 
@@ -114,8 +164,13 @@ const Terminal = () => {
           'ls [path] - List directory contents',
           'cd [path] - Change directory',
           'pwd - Print working directory',
-          'cat [file] - Display file contents'
+          'cat [file] - Display file contents',
+          'status - Check backend connection status'
         ];
+      case 'status':
+        return isBackendConnected 
+          ? 'Backend Status: Connected to Supabase' 
+          : 'Backend Status: Not connected. Go to Settings tab to configure Supabase.';
       default:
         return `Command not found: ${command}. Type 'help' for available commands.`;
     }
@@ -161,21 +216,57 @@ const Terminal = () => {
   };
 
   // Handle form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!currentInput.trim()) return;
     
+    // Add to command history for up/down navigation
+    setCommandHistory(prev => [currentInput, ...prev]);
+    setHistoryIndex(-1);
+    
     const output = processCommand(currentInput);
     
-    setHistory([...history, { input: currentInput, output }]);
+    // Add to local history
+    setHistory(prev => [...prev, { input: currentInput, output }]);
+    
+    // Save to Supabase if connected
+    if (isBackendConnected) {
+      try {
+        const outputStr = typeof output === 'object' ? JSON.stringify(output) : String(output);
+        await saveCommand(currentInput, outputStr);
+      } catch (error) {
+        console.error('Error saving command:', error);
+        toast.error('Failed to save command to backend');
+      }
+    }
+    
     setCurrentInput('');
   };
 
-  // Handle key presses
+  // Handle key presses including command history navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSubmit(e);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      // Go back in command history
+      if (commandHistory.length > 0 && historyIndex < commandHistory.length - 1) {
+        const newIndex = historyIndex + 1;
+        setHistoryIndex(newIndex);
+        setCurrentInput(commandHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      // Go forward in command history or clear if at end
+      if (historyIndex > 0) {
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        setCurrentInput(commandHistory[newIndex]);
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        setCurrentInput('');
+      }
     }
   };
 
@@ -206,11 +297,20 @@ const Terminal = () => {
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
         <div className="ml-4 text-sm text-gray-400">Terminal</div>
+        {isBackendConnected && (
+          <div className="ml-auto text-xs bg-green-700 text-white py-0.5 px-2 rounded-full">
+            Saving Commands
+          </div>
+        )}
       </div>
       
       <div className="terminal-body" ref={terminalRef}>
         <div className="mb-4">
           <p className="text-green-400">Welcome to Web Command Center! Type 'help' for available commands.</p>
+          {isBackendConnected 
+            ? <p className="text-blue-400">Backend connected: Command history will be saved.</p>
+            : <p className="text-yellow-500">Backend not connected: Go to Settings to configure.</p>
+          }
         </div>
         
         {history.map((entry, index) => (

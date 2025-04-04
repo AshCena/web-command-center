@@ -1,8 +1,8 @@
-
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Folder, File, Download, Upload, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { createSupabaseClient, fetchFiles, createFile, FileNode } from '@/lib/supabase';
 
 interface FileSystemNode {
   type: 'file' | 'dir';
@@ -14,52 +14,117 @@ interface FileSystemNode {
 
 const FileExplorer = () => {
   const [currentPath, setCurrentPath] = useState('/home/user');
-  const [fileSystem, setFileSystem] = useState<FileSystemNode[]>([
-    {
-      type: 'dir',
-      name: 'documents',
-      path: '/home/user/documents',
-      children: [
-        { type: 'file', name: 'notes.txt', path: '/home/user/documents/notes.txt', content: 'Important notes content' },
-        { type: 'file', name: 'report.pdf', path: '/home/user/documents/report.pdf', content: 'PDF content data' },
-      ]
-    },
-    {
-      type: 'dir',
-      name: 'pictures',
-      path: '/home/user/pictures',
-      children: [
-        { type: 'file', name: 'vacation.jpg', path: '/home/user/pictures/vacation.jpg', content: 'JPEG image data' },
-        { type: 'file', name: 'profile.png', path: '/home/user/pictures/profile.png', content: 'PNG image data' },
-      ]
-    },
-    { type: 'file', name: 'hello.txt', path: '/home/user/hello.txt', content: 'Hello, World!' },
-    { type: 'file', name: 'config.json', path: '/home/user/config.json', content: '{"settings": "default"}' },
-  ]);
-  
-  const [currentFiles, setCurrentFiles] = useState<FileSystemNode[]>(fileSystem);
+  const [fileSystem, setFileSystem] = useState<FileSystemNode[]>([]);
+  const [currentFiles, setCurrentFiles] = useState<FileSystemNode[]>([]);
   const [terminalInput, setTerminalInput] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Navigate to a directory
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    setIsBackendConnected(!!supabase);
+    
+    const handleStorageChange = () => {
+      const supabase = createSupabaseClient();
+      setIsBackendConnected(!!supabase);
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+  
+  useEffect(() => {
+    const loadFiles = async () => {
+      setIsLoading(true);
+      
+      if (isBackendConnected) {
+        try {
+          const { data, error } = await fetchFiles(currentPath);
+          
+          if (error) {
+            console.error('Error loading files:', error);
+            toast.error('Failed to load files from backend');
+            loadMockData();
+            return;
+          }
+          
+          if (data) {
+            const filesData = data.map(file => ({
+              type: file.type,
+              name: file.name,
+              path: file.path,
+              content: file.content,
+              children: file.type === 'dir' ? [] : undefined
+            }));
+            
+            setCurrentFiles(filesData);
+            
+            if (currentPath === '/home/user') {
+              setFileSystem(filesData);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading files:', error);
+          loadMockData();
+        }
+      } else {
+        loadMockData();
+      }
+      
+      setIsLoading(false);
+    };
+    
+    const loadMockData = () => {
+      const mockData: FileSystemNode[] = [
+        {
+          type: 'dir',
+          name: 'documents',
+          path: '/home/user/documents',
+          children: [
+            { type: 'file', name: 'notes.txt', path: '/home/user/documents/notes.txt', content: 'Important notes content' },
+            { type: 'file', name: 'report.pdf', path: '/home/user/documents/report.pdf', content: 'PDF content data' },
+          ]
+        },
+        {
+          type: 'dir',
+          name: 'pictures',
+          path: '/home/user/pictures',
+          children: [
+            { type: 'file', name: 'vacation.jpg', path: '/home/user/pictures/vacation.jpg', content: 'JPEG image data' },
+            { type: 'file', name: 'profile.png', path: '/home/user/pictures/profile.png', content: 'PNG image data' },
+          ]
+        },
+        { type: 'file', name: 'hello.txt', path: '/home/user/hello.txt', content: 'Hello, World!' },
+        { type: 'file', name: 'config.json', path: '/home/user/config.json', content: '{"settings": "default"}' },
+      ];
+      
+      setFileSystem(mockData);
+      
+      if (currentPath === '/home/user') {
+        setCurrentFiles(mockData);
+      } else {
+        updateCurrentFiles(currentPath);
+      }
+    };
+    
+    loadFiles();
+  }, [currentPath, isBackendConnected]);
+  
   const navigateToDirectory = (dirPath: string) => {
     if (dirPath === '..') {
-      // Go up one level
       const pathParts = currentPath.split('/');
-      if (pathParts.length > 3) { // Don't go above /home/user
+      if (pathParts.length > 3) {
         pathParts.pop();
         const newPath = pathParts.join('/');
         setCurrentPath(newPath);
-        updateCurrentFiles(newPath);
       }
       return;
     }
     
     setCurrentPath(dirPath);
-    updateCurrentFiles(dirPath);
   };
   
-  // Update the current files based on path
   const updateCurrentFiles = (path: string) => {
     let files: FileSystemNode[] = [];
     
@@ -81,7 +146,6 @@ const FileExplorer = () => {
       return null;
     };
     
-    // If we're at root level
     if (path === '/home/user') {
       files = fileSystem;
     } else {
@@ -94,7 +158,6 @@ const FileExplorer = () => {
     setCurrentFiles(files);
   };
   
-  // Handle file click (download for files, navigate for directories)
   const handleFileClick = (file: FileSystemNode) => {
     if (file.type === 'dir') {
       navigateToDirectory(file.path);
@@ -103,12 +166,9 @@ const FileExplorer = () => {
     }
   };
   
-  // Simulate downloading a file
   const downloadFile = (file: FileSystemNode) => {
-    // In a real app, this would initiate a download, here we just show a toast
     toast.success(`Downloading ${file.name}`);
     
-    // Create a blob from the content and download it
     const blob = new Blob([file.content || ''], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -120,14 +180,12 @@ const FileExplorer = () => {
     URL.revokeObjectURL(url);
   };
   
-  // Handle file upload button click
   const handleUploadClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
   
-  // Process terminal commands for navigation
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -139,7 +197,6 @@ const FileExplorer = () => {
       if (args[0] === '..') {
         navigateToDirectory('..');
       } else {
-        // Find the directory in current path
         const targetDir = currentFiles.find(
           f => f.type === 'dir' && f.name === args[0]
         );
@@ -151,7 +208,6 @@ const FileExplorer = () => {
         }
       }
     } else if (command === 'ls') {
-      // Already showing files, just acknowledge
       toast.info('Files listed below');
     } else {
       toast.error(`Unknown command: ${command}`);
@@ -160,17 +216,14 @@ const FileExplorer = () => {
     setTerminalInput('');
   };
   
-  // Handle file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    // Process each uploaded file
-    Array.from(files).forEach(file => {
+    Array.from(files).forEach(async (file) => {
       const reader = new FileReader();
       
-      reader.onload = () => {
-        // Create a new file node
+      reader.onload = async () => {
         const newFile: FileSystemNode = {
           type: 'file',
           name: file.name,
@@ -178,59 +231,90 @@ const FileExplorer = () => {
           content: reader.result as string,
         };
         
-        // Add file to current directory
-        if (currentPath === '/home/user') {
-          // Adding to root
-          setFileSystem([...fileSystem, newFile]);
-          setCurrentFiles([...currentFiles, newFile]);
-        } else {
-          // Add to subdirectory by cloning and modifying the file system
-          const updatedFileSystem = [...fileSystem];
-          
-          const addFileToPath = (
-            nodes: FileSystemNode[],
-            targetPath: string,
-            fileToAdd: FileSystemNode
-          ): boolean => {
-            for (let i = 0; i < nodes.length; i++) {
-              const node = nodes[i];
-              if (node.path === targetPath && node.type === 'dir') {
-                if (!node.children) {
-                  node.children = [];
-                }
-                node.children.push(fileToAdd);
-                return true;
-              }
-              
-              if (node.type === 'dir' && node.children) {
-                if (addFileToPath(node.children, targetPath, fileToAdd)) {
-                  return true;
-                }
-              }
+        if (isBackendConnected) {
+          try {
+            const { error } = await createFile({
+              name: file.name,
+              type: 'file',
+              content: reader.result as string,
+              parent_path: currentPath,
+              path: `${currentPath}/${file.name}`
+            });
+            
+            if (error) {
+              console.error('Error uploading file:', error);
+              toast.error(`Failed to upload ${file.name}`);
+              return;
             }
             
-            return false;
-          };
-          
-          if (addFileToPath(updatedFileSystem, currentPath, newFile)) {
-            setFileSystem(updatedFileSystem);
-            setCurrentFiles([...currentFiles, newFile]);
+            const { data, error: fetchError } = await fetchFiles(currentPath);
+            if (!fetchError && data) {
+              const filesData = data.map(file => ({
+                type: file.type,
+                name: file.name,
+                path: file.path,
+                content: file.content,
+                children: file.type === 'dir' ? [] : undefined
+              }));
+              
+              setCurrentFiles(filesData);
+            }
+            
+            toast.success(`Uploaded: ${file.name}`);
+          } catch (error) {
+            console.error('Error uploading file:', error);
+            toast.error(`Failed to upload ${file.name}`);
           }
+        } else {
+          if (currentPath === '/home/user') {
+            setFileSystem([...fileSystem, newFile]);
+            setCurrentFiles([...currentFiles, newFile]);
+          } else {
+            const updatedFileSystem = [...fileSystem];
+            
+            const addFileToPath = (
+              nodes: FileSystemNode[],
+              targetPath: string,
+              fileToAdd: FileSystemNode
+            ): boolean => {
+              for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                if (node.path === targetPath && node.type === 'dir') {
+                  if (!node.children) {
+                    node.children = [];
+                  }
+                  node.children.push(fileToAdd);
+                  return true;
+                }
+                
+                if (node.type === 'dir' && node.children) {
+                  if (addFileToPath(node.children, targetPath, fileToAdd)) {
+                    return true;
+                  }
+                }
+              }
+              
+              return false;
+            };
+            
+            if (addFileToPath(updatedFileSystem, currentPath, newFile)) {
+              setFileSystem(updatedFileSystem);
+              setCurrentFiles([...currentFiles, newFile]);
+            }
+          }
+          
+          toast.success(`Uploaded: ${file.name} (local only)`);
         }
-        
-        toast.success(`Uploaded: ${file.name}`);
       };
       
       reader.readAsText(file);
     });
     
-    // Reset the file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
   
-  // Render breadcrumb navigation
   const renderBreadcrumbs = () => {
     const parts = currentPath.split('/').filter(Boolean);
     
@@ -272,6 +356,11 @@ const FileExplorer = () => {
           </div>
           <div className="text-sm">File Explorer</div>
           <div className="flex space-x-2">
+            {isBackendConnected && (
+              <div className="text-xs bg-green-700 text-white py-0.5 px-2 rounded-full flex items-center">
+                Backend Connected
+              </div>
+            )}
             <Button 
               variant="ghost" 
               size="sm" 
@@ -308,45 +397,53 @@ const FileExplorer = () => {
       <div className="file-explorer-body">
         {renderBreadcrumbs()}
         
-        {currentPath !== '/home/user' && (
-          <div 
-            className="file-item"
-            onClick={() => navigateToDirectory('..')}
-          >
-            <Folder className="folder-icon h-4 w-4" />
-            <span className="text-sm">..</span>
+        {isLoading ? (
+          <div className="flex justify-center items-center h-40">
+            <div className="animate-pulse text-gray-400">Loading files...</div>
           </div>
-        )}
-        
-        {currentFiles.map((file, index) => (
-          <div 
-            key={index} 
-            className="file-item group"
-            onClick={() => handleFileClick(file)}
-          >
-            {file.type === 'dir' ? (
-              <Folder className="folder-icon h-4 w-4" />
-            ) : (
-              <File className="file-icon h-4 w-4" />
+        ) : (
+          <>
+            {currentPath !== '/home/user' && (
+              <div 
+                className="file-item"
+                onClick={() => navigateToDirectory('..')}
+              >
+                <Folder className="folder-icon h-4 w-4" />
+                <span className="text-sm">..</span>
+              </div>
             )}
-            <span className="text-sm">{file.name}</span>
             
-            {file.type === 'file' && (
-              <Download 
-                className="h-4 w-4 ml-auto text-gray-500 opacity-0 group-hover:opacity-100" 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  downloadFile(file);
-                }}
-              />
+            {currentFiles.map((file, index) => (
+              <div 
+                key={index} 
+                className="file-item group"
+                onClick={() => handleFileClick(file)}
+              >
+                {file.type === 'dir' ? (
+                  <Folder className="folder-icon h-4 w-4" />
+                ) : (
+                  <File className="file-icon h-4 w-4" />
+                )}
+                <span className="text-sm">{file.name}</span>
+                
+                {file.type === 'file' && (
+                  <Download 
+                    className="h-4 w-4 ml-auto text-gray-500 opacity-0 group-hover:opacity-100" 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadFile(file);
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+            
+            {currentFiles.length === 0 && !isLoading && (
+              <div className="text-center py-8 text-gray-500">
+                <p>This folder is empty</p>
+              </div>
             )}
-          </div>
-        ))}
-        
-        {currentFiles.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <p>This folder is empty</p>
-          </div>
+          </>
         )}
       </div>
     </div>
