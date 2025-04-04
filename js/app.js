@@ -1,4 +1,3 @@
-
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const tabButtons = document.querySelectorAll('.tab-button:not(.disabled)');
@@ -21,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Application State
   let commandHistory = [];
   let historyIndex = -1;
-  let isUsingLocalMode = true;
+  let isUsingLocalMode = localStorage.getItem('isUsingLocalMode') !== 'false';
   let currentDirectory = '~';
   let websocket = null;
   let files = [];
@@ -334,12 +333,14 @@ directory2/
             addToTerminal(data.output, 'output');
           }
           
-          if (data.cwd) {
-            currentDirectory = data.cwd;
-          }
-          
           if (data.error) {
             addToTerminal(`Error: ${data.error}`, 'output');
+          }
+          
+          // Update working directory if provided
+          if (data.cwd) {
+            currentDirectory = data.cwd;
+            updatePrompt();
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -369,6 +370,14 @@ directory2/
       console.error('Error connecting to WebSocket:', error);
       addToTerminal(`Error: ${error.message}`, 'output');
       updateTerminalStatus(false);
+    }
+  }
+  
+  // Update the prompt to show current directory
+  function updatePrompt() {
+    const promptDisplay = document.querySelector('.terminal-input-container .prompt');
+    if (promptDisplay) {
+      promptDisplay.textContent = `[${currentDirectory}]$`;
     }
   }
   
@@ -655,4 +664,7 @@ directory2/
       toast.remove();
     }, 5000);
   }
+  
+  // Update prompt on init
+  updatePrompt();
 });

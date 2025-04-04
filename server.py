@@ -4,6 +4,10 @@ import asyncio
 import signal
 import json
 import subprocess
+import pty
+import termios
+import fcntl
+import struct
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 
@@ -28,7 +32,10 @@ app.add_middleware(
 active_connections: List[WebSocket] = []
 
 # Command processes
-command_processes: Dict[str, subprocess.Popen] = {}
+command_processes: Dict[str, asyncio.subprocess.Process] = {}
+
+# Terminal sessions (for interactive commands)
+terminal_sessions: Dict[str, int] = {}  # WebSocket ID -> PTY master FD
 
 class CommandRequest(BaseModel):
     command: str
@@ -41,6 +48,85 @@ async def execute_command(websocket: WebSocket, command: str, cwd: str):
         if cwd.startswith('~'):
             cwd = os.path.expanduser(cwd)
         
+        # Check if this is an interactive command
+        interactive_commands = ["vi", "vim", "nano", "less", "more", "top", "htop"]
+        is_interactive = any(command.strip().startswith(cmd) for cmd in interactive_commands)
+
+        conn_id = id(websocket)
+        
+        if is_interactive:
+            # For interactive commands, we need to use a pseudo-terminal
+            await websocket.send_text(json.dumps({
+                "command": command,
+                "output": "Interactive commands like vi/vim are not fully supported in the web terminal. Use a simpler command or edit files with echo/cat.",
+                "cwd": cwd,
+                "timestamp": datetime.now().isoformat()
+            }))
+            return
+        
+        # Special handling for cd command (change directory)
+        if command.strip().startswith("cd "):
+            parts = command.strip().split(' ', 1)
+            if len(parts) > 1:
+                target_dir = parts[1].strip()
+                
+                # Handle home directory
+                if target_dir.startswith('~'):
+                    target_dir = os.path.expanduser(target_dir)
+                
+                # Handle relative paths
+                if not os.path.isabs(target_dir):
+                    target_dir = os.path.join(cwd, target_dir)
+                
+                # Verify directory exists
+                if os.path.isdir(target_dir):
+                    new_cwd = target_dir
+                    await websocket.send_text(json.dumps({
+                        "command": command,
+                        "output": f"Changed directory to {new_cwd}",
+                        "cwd": new_cwd,
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                else:
+                    await websocket.send_text(json.dumps({
+                        "command": command,
+                        "output": f"cd: {parts[1]}: No such directory",
+                        "cwd": cwd,
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                return
+            
+        # Handle mkdir command
+        if command.strip().startswith("mkdir "):
+            parts = command.strip().split(' ', 1)
+            if len(parts) > 1:
+                dir_name = parts[1].strip()
+                
+                # Handle home directory
+                if dir_name.startswith('~'):
+                    dir_name = os.path.expanduser(dir_name)
+                
+                # Handle relative paths
+                if not os.path.isabs(dir_name):
+                    dir_name = os.path.join(cwd, dir_name)
+                    
+                try:
+                    os.makedirs(dir_name, exist_ok=True)
+                    await websocket.send_text(json.dumps({
+                        "command": command,
+                        "output": f"Directory created: {dir_name}",
+                        "cwd": cwd,
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                except Exception as e:
+                    await websocket.send_text(json.dumps({
+                        "command": command,
+                        "output": f"Error creating directory: {str(e)}",
+                        "cwd": cwd,
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                return
+        
         # Create process
         process = await asyncio.create_subprocess_shell(
             command,
@@ -52,7 +138,6 @@ async def execute_command(websocket: WebSocket, command: str, cwd: str):
         )
         
         # Store process for potential termination
-        conn_id = id(websocket)
         command_processes[conn_id] = process
         
         # Read stdout and stderr concurrently
@@ -60,24 +145,15 @@ async def execute_command(websocket: WebSocket, command: str, cwd: str):
         stderr_task = asyncio.create_task(process.stderr.read())
         
         # Wait for process to complete
-        done, pending = await asyncio.wait(
-            [stdout_task, stderr_task],
-            return_when=asyncio.FIRST_COMPLETED
-        )
+        await process.wait()
         
-        # Cancel pending tasks
-        for task in pending:
-            task.cancel()
+        # Get the outputs
+        stdout_result = await stdout_task
+        stderr_result = await stderr_task
         
         # Process output
-        output = ""
-        error = ""
-        
-        for task in done:
-            if task is stdout_task:
-                output = task.result().decode('utf-8', errors='replace')
-            elif task is stderr_task:
-                error = task.result().decode('utf-8', errors='replace')
+        output = stdout_result.decode('utf-8', errors='replace')
+        error = stderr_result.decode('utf-8', errors='replace')
         
         # Get current directory after command execution
         current_dir_process = await asyncio.create_subprocess_shell(
