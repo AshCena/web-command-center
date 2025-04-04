@@ -1,8 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { saveCommand, fetchCommandHistory, createSupabaseClient } from '@/lib/supabase';
 import { toast } from 'sonner';
+import TerminalCommands from './TerminalCommands';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface TerminalEntry {
   input: string;
@@ -16,10 +17,11 @@ const Terminal = () => {
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [isUsingLocalMode, setIsUsingLocalMode] = useState(true);
   const terminalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Mock file system (this would be replaced with Supabase data in a full implementation)
+  // Mock file system (for local mode)
   const fileSystem = {
     '/home/user': {
       type: 'dir',
@@ -97,6 +99,12 @@ const Terminal = () => {
 
   // Process commands
   const processCommand = (cmd: string): string | string[] => {
+    // If using real terminal mode, this won't be called
+    if (!isUsingLocalMode) {
+      return '';
+    }
+    
+    // For local mode, use the existing mock implementation
     const parts = cmd.trim().split(' ');
     const command = parts[0];
     const args = parts.slice(1);
@@ -105,8 +113,16 @@ const Terminal = () => {
       case 'clear':
         setHistory([]);
         return '';
-      case 'echo':
-        return args.join(' ');
+      case 'mode':
+        if (args[0] === 'real') {
+          setIsUsingLocalMode(false);
+          return 'Switched to real terminal mode. Commands will be executed on the server.';
+        } else if (args[0] === 'local') {
+          setIsUsingLocalMode(true);
+          return 'Switched to local mode. Commands will be simulated in the browser.';
+        } else {
+          return `Current mode: ${isUsingLocalMode ? 'local' : 'real'}. Use 'mode real' or 'mode local' to switch.`;
+        }
       case 'ls':
         try {
           const path = args[0] || currentDir;
@@ -215,6 +231,26 @@ const Terminal = () => {
     return current;
   };
 
+  // Handle real terminal command output
+  const handleCommandOutput = (output: string) => {
+    // Update history with the command output
+    setHistory(prev => {
+      const lastEntry = prev[prev.length - 1];
+      if (lastEntry && lastEntry.input === currentInput) {
+        return [...prev.slice(0, -1), { input: lastEntry.input, output }];
+      }
+      return [...prev, { input: currentInput, output }];
+    });
+    
+    // If the output contains a directory path, update currentDir
+    // This is a simple heuristic - a better approach would be for the server to send
+    // the new working directory explicitly
+    const pwdMatch = output.match(/^(\/[\w\d\/\-_.]+)$/m);
+    if (pwdMatch && currentInput.trim() === 'pwd') {
+      setCurrentDir(pwdMatch[1]);
+    }
+  };
+
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,16 +261,23 @@ const Terminal = () => {
     setCommandHistory(prev => [currentInput, ...prev]);
     setHistoryIndex(-1);
     
-    const output = processCommand(currentInput);
-    
-    // Add to local history
-    setHistory(prev => [...prev, { input: currentInput, output }]);
+    // For real terminal mode, don't process command locally
+    if (!isUsingLocalMode) {
+      // Just add the command to history, output will come from WebSocket
+      setHistory(prev => [...prev, { input: currentInput, output: 'Executing...' }]);
+    } else {
+      // Process locally
+      const output = processCommand(currentInput);
+      setHistory(prev => [...prev, { input: currentInput, output }]);
+    }
     
     // Save to Supabase if connected
     if (isBackendConnected) {
       try {
-        const outputStr = typeof output === 'object' ? JSON.stringify(output) : String(output);
-        await saveCommand(currentInput, outputStr);
+        const outputPlaceholder = isUsingLocalMode ? 
+          (typeof output === 'object' ? JSON.stringify(output) : String(output)) : 
+          "Command executed on server";
+        await saveCommand(currentInput, outputPlaceholder);
       } catch (error) {
         console.error('Error saving command:', error);
         toast.error('Failed to save command to backend');
@@ -296,17 +339,32 @@ const Terminal = () => {
           <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
-        <div className="ml-4 text-sm text-gray-400">Terminal</div>
-        {isBackendConnected && (
-          <div className="ml-auto text-xs bg-green-700 text-white py-0.5 px-2 rounded-full">
-            Saving Commands
-          </div>
-        )}
+        <div className="ml-4 text-sm text-gray-400">Terminal {isUsingLocalMode ? "(Local Mode)" : "(Server Mode)"}</div>
+        <div className="ml-auto flex space-x-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setIsUsingLocalMode(prev => !prev)}
+            className="text-xs h-6"
+          >
+            {isUsingLocalMode ? "Switch to Server Mode" : "Switch to Local Mode"}
+          </Button>
+          {isBackendConnected && (
+            <div className="text-xs bg-green-700 text-white py-0.5 px-2 rounded-full">
+              Saving Commands
+            </div>
+          )}
+        </div>
       </div>
       
-      <div className="terminal-body" ref={terminalRef}>
+      <ScrollArea className="terminal-body" ref={terminalRef}>
         <div className="mb-4">
           <p className="text-green-400">Welcome to Web Command Center! Type 'help' for available commands.</p>
+          {isUsingLocalMode ? (
+            <p className="text-yellow-500">Running in local mode (simulated commands). Type 'mode real' to execute commands on the server.</p>
+          ) : (
+            <p className="text-blue-400">Running in server mode. Commands will be executed on the connected server.</p>
+          )}
           {isBackendConnected 
             ? <p className="text-blue-400">Backend connected: Command history will be saved.</p>
             : <p className="text-yellow-500">Backend not connected: Go to Settings to configure.</p>
@@ -319,7 +377,7 @@ const Terminal = () => {
               <span className="terminal-prompt">user@web-cmd:<span className="text-blue-300">{currentDir}</span>$ </span>
               <span className="terminal-command">{entry.input}</span>
             </div>
-            <div className="terminal-output">{formatOutput(entry.output)}</div>
+            <div className="terminal-output whitespace-pre-wrap">{formatOutput(entry.output)}</div>
           </div>
         ))}
         
@@ -335,7 +393,15 @@ const Terminal = () => {
             autoFocus
           />
         </form>
-      </div>
+        
+        {!isUsingLocalMode && (
+          <TerminalCommands 
+            onCommandOutput={handleCommandOutput}
+            currentInput={currentInput}
+            setCurrentInput={setCurrentInput}
+          />
+        )}
+      </ScrollArea>
     </div>
   );
 };

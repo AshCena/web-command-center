@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import WebSocketSettings from './WebSocketSettings';
 
 const Settings = () => {
   const [apiKey, setApiKey] = useState('');
@@ -37,42 +39,55 @@ const Settings = () => {
       </div>
       
       <div className="p-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Backend Configuration</CardTitle>
-            <CardDescription>Connect to Supabase to enable file storage and command history</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="project-url">Supabase Project URL</Label>
-                <Input 
-                  id="project-url" 
-                  placeholder="https://your-project.supabase.co"
-                  value={projectUrl}
-                  onChange={(e) => setProjectUrl(e.target.value)}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="api-key">Supabase API Key</Label>
-                <Input 
-                  id="api-key" 
-                  type="password"
-                  placeholder="Your Supabase API Key"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-                <p className="text-xs text-gray-400">
-                  This is your anon/public key from Supabase. Never share your service role key.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={saveSettings}>Save Settings</Button>
-          </CardFooter>
-        </Card>
+        <Tabs defaultValue="supabase">
+          <TabsList className="mb-6">
+            <TabsTrigger value="supabase">Supabase Settings</TabsTrigger>
+            <TabsTrigger value="terminal">Terminal Server</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="supabase">
+            <Card>
+              <CardHeader>
+                <CardTitle>Backend Configuration</CardTitle>
+                <CardDescription>Connect to Supabase to enable file storage and command history</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="project-url">Supabase Project URL</Label>
+                    <Input 
+                      id="project-url" 
+                      placeholder="https://your-project.supabase.co"
+                      value={projectUrl}
+                      onChange={(e) => setProjectUrl(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="api-key">Supabase API Key</Label>
+                    <Input 
+                      id="api-key" 
+                      type="password"
+                      placeholder="Your Supabase API Key"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-400">
+                      This is your anon/public key from Supabase. Never share your service role key.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={saveSettings}>Save Settings</Button>
+              </CardFooter>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="terminal">
+            <WebSocketSettings />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

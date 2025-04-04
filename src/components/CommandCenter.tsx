@@ -1,17 +1,23 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Terminal from './Terminal';
 import FileExplorer from './FileExplorer';
 import Settings from './Settings';
 import { createSupabaseClient } from '@/lib/supabase';
+import { useWebSocket } from '@/hooks/useWebSocket';
 
 const CommandCenter = () => {
   const [activeTab, setActiveTab] = useState("terminal");
   const [backendConnected, setBackendConnected] = useState(false);
+  
+  // WebSocket connection for terminal
+  const { connectionStatus } = useWebSocket({
+    onMessage: () => {}, // We handle messages in the Terminal component
+  });
 
   // Check if backend is configured
-  React.useEffect(() => {
+  useEffect(() => {
     const supabase = createSupabaseClient();
     setBackendConnected(!!supabase);
     
@@ -31,11 +37,18 @@ const CommandCenter = () => {
         <span className="text-terminal-accent">Web</span>
         <span className="text-terminal-prompt ml-2">Command</span>
         <span className="text-terminal-text ml-2">Center</span>
-        {backendConnected && 
-          <span className="text-xs ml-4 bg-green-700 text-white py-1 px-2 rounded-full">
-            Backend Connected
-          </span>
-        }
+        <div className="flex space-x-2 ml-4">
+          {backendConnected && 
+            <span className="text-xs bg-green-700 text-white py-1 px-2 rounded-full">
+              Storage Connected
+            </span>
+          }
+          {connectionStatus === 'Connected' && 
+            <span className="text-xs bg-blue-700 text-white py-1 px-2 rounded-full">
+              Terminal Server Connected
+            </span>
+          }
+        </div>
       </h1>
       
       <Tabs defaultValue="terminal" value={activeTab} onValueChange={setActiveTab} className="w-full">
