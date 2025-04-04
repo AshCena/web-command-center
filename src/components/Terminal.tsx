@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { saveCommand, fetchCommandHistory, createSupabaseClient } from '@/lib/supabase';
@@ -269,18 +270,17 @@ const Terminal = () => {
       // Process locally
       const output = processCommand(currentInput);
       setHistory(prev => [...prev, { input: currentInput, output }]);
-    }
-    
-    // Save to Supabase if connected
-    if (isBackendConnected) {
-      try {
-        const outputPlaceholder = isUsingLocalMode ? 
-          (typeof output === 'object' ? JSON.stringify(output) : String(output)) : 
-          "Command executed on server";
-        await saveCommand(currentInput, outputPlaceholder);
-      } catch (error) {
-        console.error('Error saving command:', error);
-        toast.error('Failed to save command to backend');
+      
+      // Save to Supabase if connected
+      if (isBackendConnected) {
+        try {
+          const outputText = typeof output === 'object' ? 
+            JSON.stringify(output) : String(output);
+          await saveCommand(currentInput, outputText);
+        } catch (error) {
+          console.error('Error saving command:', error);
+          toast.error('Failed to save command to backend');
+        }
       }
     }
     
